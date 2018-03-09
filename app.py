@@ -130,8 +130,8 @@ def sc_lpn():
 	payload_int = int(j['DevEUI_uplink']['payload_hex'],16)
 	bytes = bytearray.fromhex(payload)
 	r_deveui = j['DevEUI_uplink']['DevEUI']
-	r_timestamp = j['DevEUI_uplink']['Time']
-	r_time = dt.datetime.strptime(j['DevEUI_uplink']['Time'],"%Y-%m-%dT%H:%M:%S.%f+01:00")
+	r_time = j['DevEUI_uplink']['Time']
+	r_timestamp = dt.datetime.strptime(j['DevEUI_uplink']['Time'],"%Y-%m-%dT%H:%M:%S.%f+01:00")
 	r_sp_fact = j['DevEUI_uplink']['SpFact']
 	r_channel = j['DevEUI_uplink']['Channel']
 	r_band = j['DevEUI_uplink']['SubBand']
@@ -159,7 +159,7 @@ def sc_lpn():
 		r_temp = ((payload_int & 0x00ffff00000000000000000000000000) >> bitshift(size_payload,2))/100.0
 		r_hum = ((payload_int & 0x000000ffff0000000000000000000000) >> bitshift(size_payload,4))/100.0
 		r_sat = ((payload_int & 0x00000000000000000000000000ff0000) >> bitshift(size_payload,13))
-		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff) >> bitshift(size_payload,15))/100.0
+		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff) >> bitshift(size_payload,15))
 
 		print(r_lat)
 		print(r_lon)
