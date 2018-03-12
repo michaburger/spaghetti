@@ -3,8 +3,9 @@ import os
 import json
 import struct
 import datetime as dt
-from flask import Flask, request, redirect, url_for, escape, jsonify
+from flask import Flask, request, redirect, url_for, escape, jsonify, make_response
 from flask_mongoengine import MongoEngine
+from itertools import chain
 
 app = Flask(__name__)
 
@@ -69,7 +70,21 @@ def bitshift (payload,lastbyte):
 # our base route which just returns a string
 @app.route('/')
 def hello_world():
-	return 'Congratulations! Welcome to Spaghetti v1!'
+	return "<b>Congratulations! Welcome to Spaghetti v1!</b>"
+
+#output a csv file
+#To do: debug (correct nested list import)
+@app.route('/csv/<track>')
+def print_csv(track):
+
+	#make flattened list for export
+	response = chain.from_iterable(make_response(DataPoint.objects(track_ID=track)))
+
+	print(response) 
+	cd = 'attachment; filename = export.csv'
+	response.headers['Content-Disposition'] = cd
+	response.mimetype='text/csv'
+	return response
 
 #querying the database and giving back a JSON file
 @app.route('/query', methods=['GET'])
@@ -92,13 +107,13 @@ def db_query():
 		track = int(query['track'])
 
 	if 'start' in query:
-		start = dt.datetime.strptime(query['start'], "%Y-%m-%d %H:%M:%S")
+		start = dt.datetime.strptime(query['start'], "%Y-%m-%d_%H:%M:%S")
 	
 
 	if 'end' in query:
-		end = dt.datetime.strptime(query['end'], "%Y-%m-%d %H:%M:%S")
+		end = dt.datetime.strptime(query['end'], "%Y-%m-%d_%H:%M:%S")
 
-	datapoints = DataPoint.objects(track_ID=track).to_json()
+	datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start).to_json()
 	return datapoints
 
 
@@ -188,7 +203,7 @@ def sc_lpn():
 	#TODO: check if gpscord = 0.0
 	
 	if gpfix:
-		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, gps_hdop = r_hdop, track_ID = 1, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
+		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, gps_hdop = r_hdop, track_ID = 2, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
 			temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, channel=r_channel, sub_band=r_band, 
 			gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, gateway_esp=g_esp)
 		datapoint.save()
