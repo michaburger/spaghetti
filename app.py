@@ -8,6 +8,7 @@ from flask_mongoengine import MongoEngine
 from itertools import chain
 
 app = Flask(__name__)
+TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
 
 # check if running in the cloud and set MongoDB settings accordingly
 if 'VCAP_SERVICES' in os.environ:
@@ -107,11 +108,11 @@ def db_query():
 		track = int(query['track'])
 
 	if 'start' in query:
-		start = dt.datetime.strptime(query['start'], "%Y-%m-%d_%H:%M:%S")
+		start = dt.datetime.strptime(query['start'], TIME_FORMAT)
 	
 
 	if 'end' in query:
-		end = dt.datetime.strptime(query['end'], "%Y-%m-%d_%H:%M:%S")
+		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
 
 	datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start).to_json()
 	return datapoints
@@ -140,7 +141,7 @@ def sc_lpn():
 	direxio_list = ['78AF58060000006D']
 
 	#Parse JSON from ThingPark
-	size_payload=16
+	size_payload=17
 	payload = j['DevEUI_uplink']['payload_hex']
 	payload_int = int(j['DevEUI_uplink']['payload_hex'],16)
 	bytes = bytearray.fromhex(payload)
@@ -164,24 +165,26 @@ def sc_lpn():
 		g_esp.append(item['LrrESP'])
 
 	if(r_deveui in tuino_list):
-		r_devtype = "tuino-v2"
+		r_devtype = "tuino-v3"
 		#r_lat = struct.unpack('<l', bytes.fromhex(payload[10:18]))[0] /10000000.0
 		#r_lon = struct.unpack('<l', bytes.fromhex(payload[18:26]))[0] /10000000.0
 		#r_temp = struct.unpack('<i', bytes.fromhex(payload[2:6]))[0] /100.0
 		#r_hum = struct.unpack('<i', bytes.fromhex(payload[6:10]))[0] /100.0
-		r_lat = ((payload_int & 0x0000000000ffffffff00000000000000) >> bitshift(size_payload,8))/10000000.0
-		r_lon = ((payload_int & 0x000000000000000000ffffffff000000) >> bitshift(size_payload,12))/10000000.0
-		r_temp = ((payload_int & 0x00ffff00000000000000000000000000) >> bitshift(size_payload,2))/100.0
-		r_hum = ((payload_int & 0x000000ffff0000000000000000000000) >> bitshift(size_payload,4))/100.0
-		r_sat = ((payload_int & 0x00000000000000000000000000ff0000) >> bitshift(size_payload,13))
-		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff) >> bitshift(size_payload,15))
+		r_lat = ((payload_int & 0x0000000000ffffffff0000000000000000) >> bitshift(size_payload,8))/10000000.0
+		r_lon = ((payload_int & 0x000000000000000000ffffffff00000000) >> bitshift(size_payload,12))/10000000.0
+		r_temp = ((payload_int & 0x00ffff0000000000000000000000000000) >> bitshift(size_payload,2))/100.0
+		r_hum = ((payload_int & 0x000000ffff000000000000000000000000) >> bitshift(size_payload,4))/100.0
+		r_sat = ((payload_int & 0x00000000000000000000000000ff000000) >> bitshift(size_payload,13))
+		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff00) >> bitshift(size_payload,15))
+		r_trk = ((payload_int & 0x00000000000000000000000000000000ff) >> bitshift(size_payload,16))
 
-		print(r_lat)
-		print(r_lon)
-		print(r_temp)
-		print(r_hum)
-		print(r_sat)
-		print(r_hdop)
+		print('Lat: ' + str(r_lat))
+		print('Lon: ' + str(r_lon))
+		print('Temp: ' + str(r_temp))
+		print('Hum: ' + str(r_hum))
+		print('Satellites: ' + str(r_sat))
+		print('HDOP: ' + str(r_hdop))
+		print('Track: ' + str(r_trk))
 
 
 	elif (r_deveui in direxio_list):
@@ -192,6 +195,8 @@ def sc_lpn():
 		r_hum = -99
 		r_sat = 0
 		r_hdop = 20
+		r_trk = 9 #test track number
+
 		print(r_lat)
 		print(r_lon)
 	else:
@@ -203,7 +208,7 @@ def sc_lpn():
 	#TODO: check if gpscord = 0.0
 	
 	if gpfix:
-		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, gps_hdop = r_hdop, track_ID = 2, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
+		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, gps_hdop = r_hdop, track_ID = r_trk, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
 			temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, channel=r_channel, sub_band=r_band, 
 			gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, gateway_esp=g_esp)
 		datapoint.save()
@@ -229,10 +234,10 @@ def gateway_data():
 				#return 'gateway deleted'
 				return "delete function disabled for security reasons"
 
-			print(len(Gateways.objects(gateway_id=gtw_dict['id'])))
+			#print(len(Gateways.objects(gateway_id=gtw_dict['id'])))
 			#test if gateway already exists
 			if (len(Gateways.objects(gateway_id=gtw_dict['id']))) > 0:
-				return 'object exists'
+				return 'gateway already exists'
 			else:
 				gateway = Gateways(gateway_id=gtw_dict['id'], gateway_lat=gtw_dict['lat'], gateway_lon=gtw_dict['lon'])
 				gateway.save()
