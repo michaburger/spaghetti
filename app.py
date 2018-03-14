@@ -2,6 +2,7 @@
 import os
 import json
 import struct
+import numpy as np
 import datetime as dt
 from flask import Flask, request, redirect, url_for, escape, jsonify, make_response
 from flask_mongoengine import MongoEngine
@@ -245,7 +246,18 @@ def gateway_data():
 		else:
 			abort (400) #bad request
 	else: 
-		gateways = Gateways.objects.to_json()
+		inp = request.args
+		if('lat' in inp and 'lon' in inp and 'radius' in inp):
+			lat1 = (float(inp['lat']) - m_to_coord('lat',float(inp['radius']),float(inp['lat'])))
+			lat2 = (float(inp['lat']) + m_to_coord('lat',float(inp['radius']),float(inp['lat'])))
+			lon1 = (float(inp['lon']) - m_to_coord('lon',float(inp['radius']),float(inp['lat'])))
+			lon2 = (float(inp['lon']) + m_to_coord('lon',float(inp['radius']),float(inp['lat'])))
+			gateways = Gateways.objects(gateway_lat__gt=lat1,gateway_lat__lt=lat2,gateway_lon__gt=lon1,gateway_lon__lt=lon2).to_json()
+		elif('eui' in inp):
+			gateways = Gateways.objects(gateway_id=inp['eui'])
+		else:
+			gateways = Gateways.objects.to_json()
+		
 		return gateways
 
 # endpoint to return all kittens
@@ -255,6 +267,26 @@ def get_data():
 	return datapoints
 
 
+def m_to_coord(latlon, meter, deglat):
+	R = 40000000
+	if latlon == 'lon':
+		return (meter/(np.cos(np.radians(deglat))*R))*360.0
+	elif latlon == 'lat':
+		return (meter/R)*360.0
+	else:
+		print('return 0')
+		return 0
+
+def coord_to_m(latlon, meter, deglat):
+	R = 40000000
+	if latlon == 'lon':
+		return (meter/360.0)*(np.cos(np.radians(deglat))*R)
+	elif latlon == 'lat':
+		return (meter/360.0)*R
+	else:
+		return 0
 # start the app
 if __name__ == '__main__':
+	#print(m_to_coord('lat',10000,46.518718))
+	#print(m_to_coord('lon',10000,46.518718))
 	app.run(host='0.0.0.0', port=port)
