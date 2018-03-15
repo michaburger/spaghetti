@@ -43,6 +43,8 @@ class DataPoint(db.Document):
 	gps_lon = db.FloatField()
 	gps_sat = db.IntField()
 	gps_hdop = db.FloatField()
+	gps_speed = db.FloatField()
+	gps_course = db.IntField()
 	temperature = db.FloatField()
 	humidity = db.FloatField()
 	sp_fact = db.IntField()
@@ -142,7 +144,7 @@ def sc_lpn():
 	direxio_list = ['78AF58060000006D']
 
 	#Parse JSON from ThingPark
-	size_payload=17
+	size_payload=19
 	payload = j['DevEUI_uplink']['payload_hex']
 	payload_int = int(j['DevEUI_uplink']['payload_hex'],16)
 	bytes = bytearray.fromhex(payload)
@@ -171,13 +173,15 @@ def sc_lpn():
 		#r_lon = struct.unpack('<l', bytes.fromhex(payload[18:26]))[0] /10000000.0
 		#r_temp = struct.unpack('<i', bytes.fromhex(payload[2:6]))[0] /100.0
 		#r_hum = struct.unpack('<i', bytes.fromhex(payload[6:10]))[0] /100.0
-		r_lat = ((payload_int & 0x0000000000ffffffff0000000000000000) >> bitshift(size_payload,8))/10000000.0
-		r_lon = ((payload_int & 0x000000000000000000ffffffff00000000) >> bitshift(size_payload,12))/10000000.0
-		r_temp = ((payload_int & 0x00ffff0000000000000000000000000000) >> bitshift(size_payload,2))/100.0
-		r_hum = ((payload_int & 0x000000ffff000000000000000000000000) >> bitshift(size_payload,4))/100.0
-		r_sat = ((payload_int & 0x00000000000000000000000000ff000000) >> bitshift(size_payload,13))
-		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff00) >> bitshift(size_payload,15))
-		r_trk = ((payload_int & 0x00000000000000000000000000000000ff) >> bitshift(size_payload,16))
+		r_lat = ((payload_int & 0x0000000000ffffffff00000000000000000000) >> bitshift(size_payload,8))/10000000.0
+		r_lon = ((payload_int & 0x000000000000000000ffffffff000000000000) >> bitshift(size_payload,12))/10000000.0
+		r_temp = ((payload_int & 0x00ffff00000000000000000000000000000000) >> bitshift(size_payload,2))/100.0
+		r_hum = ((payload_int & 0x000000ffff0000000000000000000000000000) >> bitshift(size_payload,4))/100.0
+		r_sat = ((payload_int & 0x00000000000000000000000000ff0000000000) >> bitshift(size_payload,13))
+		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff000000) >> bitshift(size_payload,15))
+		r_speed = ((payload_int & 0x00000000000000000000000000000000ff0000) >> bitshift(size_payload,16)) / 2
+		r_course = ((payload_int & 0x0000000000000000000000000000000000ff00) >> bitshift(size_payload,17)) * 2
+		r_trk = ((payload_int & 0x000000000000000000000000000000000000ff) >> bitshift(size_payload,18))
 
 		print('Lat: ' + str(r_lat))
 		print('Lon: ' + str(r_lon))
@@ -186,7 +190,8 @@ def sc_lpn():
 		print('Satellites: ' + str(r_sat))
 		print('HDOP: ' + str(r_hdop))
 		print('Track: ' + str(r_trk))
-
+		print('Speed: ' + str(r_speed))
+		print('Course: ' + str(r_course))
 
 	elif (r_deveui in direxio_list):
 		r_devtype = "direxio-v1"
@@ -196,6 +201,8 @@ def sc_lpn():
 		r_hum = -99
 		r_sat = 0
 		r_hdop = 20
+		r_speed = 0
+		r_course = 0
 		r_trk = 9 #test track number
 
 		print(r_lat)
@@ -209,9 +216,11 @@ def sc_lpn():
 	#TODO: check if gpscord = 0.0
 	
 	if gpfix:
-		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, gps_hdop = r_hdop, track_ID = r_trk, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
-			temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, channel=r_channel, sub_band=r_band, 
-			gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, gateway_esp=g_esp)
+		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, 
+			gps_hdop = r_hdop, track_ID = r_trk, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
+			gps_speed = r_speed, gps_course = r_course, temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, 
+			channel=r_channel, sub_band=r_band, gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, 
+			gateway_esp=g_esp)
 		datapoint.save()
 		return 'Datapoint DevEUI %s saved' %(r_deveui)
 	else:
