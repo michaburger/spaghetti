@@ -55,6 +55,7 @@ class DataPoint(db.Document):
 	gateway_rssi = db.ListField(db.FloatField())
 	gateway_snr = db.ListField(db.FloatField())
 	gateway_esp = db.ListField(db.FloatField())
+	tx_pow = db.IntField()
 	#work in a specific mongoDB collection:
 	meta = {'db_alias': 'gps-points'}
 
@@ -102,10 +103,17 @@ def db_query():
 	end = dt.datetime.now()
 
 	#enable for deleting objects. Attention, deletes parts of the database! Should be left disabled.
-	if 'delete' in query:
-		#DataPoint.objects(gps_lat=0.0).delete()
-		#return 'objectes deleted'
+	if 'delete' in query and 'start' in query and 'end' in query:
+		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
+		start = dt.datetime.strptime(query['start'], TIME_FORMAT)
+		#DataPoint.objects(track_ID=query['delete'],timestamp__lt=end,timestamp__gt=start).delete()
+		#return 'objects deleted'
 		return 'delete feature disabled for security reasons'
+
+	if 'delpoint' in query:
+		#to do: debug this
+		DataPoint.objects(timestamp=query['delpoint']).delete()
+		return "ok"
 
 	if 'track' in query:
 		track = int(query['track'])
@@ -117,8 +125,14 @@ def db_query():
 	if 'end' in query:
 		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
 
-	datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start).to_json()
-	return datapoints
+	if 'sf' in query and 'txpow' in query:
+		sf = int(query['sf'])
+		txpow = int(query['txpow'])
+		datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start,sp_fact=sf,tx_pow=txpow).to_json()
+		return datapoints
+	else:
+		datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start).to_json()
+		return datapoints
 
 
 # Swisscom LPN listener to POST from actility
@@ -140,17 +154,19 @@ def sc_lpn():
 	print("JSON received:")
 	print(j)
 
-	tuino_list = ['78AF580300000485']
+	tuino_list = ['78AF580300000485','78AF580300000506']
 	direxio_list = ['78AF58060000006D']
 
 	#Parse JSON from ThingPark
-	size_payload=19
+	size_payload=20
 	payload = j['DevEUI_uplink']['payload_hex']
 	payload_int = int(j['DevEUI_uplink']['payload_hex'],16)
 	bytes = bytearray.fromhex(payload)
 	r_deveui = j['DevEUI_uplink']['DevEUI']
 	r_time = j['DevEUI_uplink']['Time']
-	r_timestamp = dt.datetime.strptime(j['DevEUI_uplink']['Time'],"%Y-%m-%dT%H:%M:%S.%f+01:00")
+	#Directive %z not supported in python 2! 
+	#Todo: Use Python 3 and remove fixed timezone
+	r_timestamp = dt.datetime.strptime(r_time,"%Y-%m-%dT%H:%M:%S.%f+02:00")
 	r_sp_fact = j['DevEUI_uplink']['SpFact']
 	r_channel = j['DevEUI_uplink']['Channel']
 	r_band = j['DevEUI_uplink']['SubBand']
@@ -173,16 +189,19 @@ def sc_lpn():
 		#r_lon = struct.unpack('<l', bytes.fromhex(payload[18:26]))[0] /10000000.0
 		#r_temp = struct.unpack('<i', bytes.fromhex(payload[2:6]))[0] /100.0
 		#r_hum = struct.unpack('<i', bytes.fromhex(payload[6:10]))[0] /100.0
-		r_lat = ((payload_int & 0x0000000000ffffffff00000000000000000000) >> bitshift(size_payload,8))/10000000.0
-		r_lon = ((payload_int & 0x000000000000000000ffffffff000000000000) >> bitshift(size_payload,12))/10000000.0
-		r_temp = ((payload_int & 0x00ffff00000000000000000000000000000000) >> bitshift(size_payload,2))/100.0
-		r_hum = ((payload_int & 0x000000ffff0000000000000000000000000000) >> bitshift(size_payload,4))/100.0
-		r_sat = ((payload_int & 0x00000000000000000000000000ff0000000000) >> bitshift(size_payload,13))
-		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff000000) >> bitshift(size_payload,15))
-		r_speed = ((payload_int & 0x00000000000000000000000000000000ff0000) >> bitshift(size_payload,16)) / 2
-		r_course = ((payload_int & 0x0000000000000000000000000000000000ff00) >> bitshift(size_payload,17)) * 2
-		r_trk = ((payload_int & 0x000000000000000000000000000000000000ff) >> bitshift(size_payload,18))
+		r_lat = ((payload_int & 0x0000000000ffffffff0000000000000000000000) >> bitshift(size_payload,8))/10000000.0
+		r_lon = ((payload_int & 0x000000000000000000ffffffff00000000000000) >> bitshift(size_payload,12))/10000000.0
+		r_temp = ((payload_int & 0x00ffff0000000000000000000000000000000000) >> bitshift(size_payload,2))/100.0
+		r_hum = ((payload_int & 0x000000ffff000000000000000000000000000000) >> bitshift(size_payload,4))/100.0
+		r_sat = ((payload_int & 0x00000000000000000000000000ff000000000000) >> bitshift(size_payload,13))
+		r_hdop = ((payload_int & 0x0000000000000000000000000000ffff00000000) >> bitshift(size_payload,15))
+		r_speed = ((payload_int & 0x00000000000000000000000000000000ff000000) >> bitshift(size_payload,16)) / 2
+		r_course = ((payload_int & 0x0000000000000000000000000000000000ff0000) >> bitshift(size_payload,17)) * 2
+		r_trk = ((payload_int & 0x000000000000000000000000000000000000ff00) >> bitshift(size_payload,18))
+		r_txpow= ((payload_int & 0x00000000000000000000000000000000000000ff) >> bitshift(size_payload,19))
 
+		print('TXpow: ' + str(r_txpow))
+		print('SF: '+ str(r_sp_fact))
 		print('Lat: ' + str(r_lat))
 		print('Lon: ' + str(r_lon))
 		print('Temp: ' + str(r_temp))
@@ -203,7 +222,8 @@ def sc_lpn():
 		r_hdop = 20
 		r_speed = 0
 		r_course = 0
-		r_trk = 9 #test track number
+		r_txpow = 0
+		r_trk = 99 #test track number
 
 		print(r_lat)
 		print(r_lon)
@@ -216,11 +236,11 @@ def sc_lpn():
 	#TODO: check if gpscord = 0.0
 	
 	if gpfix:
-		datapoint = DataPoint(devEUI=r_deveui, time= r_time, deviceType = r_devtype, gps_sat = r_sat, 
-			gps_hdop = r_hdop, track_ID = r_trk, timestamp=r_timestamp, gps_lat=r_lat, gps_lon=r_lon,
+		datapoint = DataPoint(devEUI=r_deveui, time= r_time, timestamp = r_timestamp, deviceType = r_devtype, gps_sat = r_sat, 
+			gps_hdop = r_hdop, track_ID = r_trk, gps_lat=r_lat, gps_lon=r_lon,
 			gps_speed = r_speed, gps_course = r_course, temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, 
 			channel=r_channel, sub_band=r_band, gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, 
-			gateway_esp=g_esp)
+			gateway_esp=g_esp, tx_pow = r_txpow)
 		datapoint.save()
 		return 'Datapoint DevEUI %s saved' %(r_deveui)
 	else:
