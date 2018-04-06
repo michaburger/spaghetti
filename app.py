@@ -297,7 +297,7 @@ def get_data():
 
 
 def m_to_coord(latlon, meter, deglat):
-	R = 40000000
+	R = 40030173
 	if latlon == 'lon':
 		return (meter/(np.cos(np.radians(deglat))*R))*360.0
 	elif latlon == 'lat':
@@ -307,7 +307,7 @@ def m_to_coord(latlon, meter, deglat):
 		return 0
 
 def coord_to_m(latlon, meter, deglat):
-	R = 40000000
+	R = 40030173
 	if latlon == 'lon':
 		return (meter/360.0)*(np.cos(np.radians(deglat))*R)
 	elif latlon == 'lat':
