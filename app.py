@@ -4,12 +4,13 @@ import json
 import struct
 import numpy as np
 import datetime as dt
-from flask import Flask, request, redirect, url_for, escape, jsonify, make_response
+from flask import Flask, Response, request, redirect, url_for, escape, jsonify, make_response
 from flask_mongoengine import MongoEngine
 from itertools import chain
 
 app = Flask(__name__)
 TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
+
 
 # check if running in the cloud and set MongoDB settings accordingly
 if 'VCAP_SERVICES' in os.environ:
@@ -18,6 +19,7 @@ if 'VCAP_SERVICES' in os.environ:
 	mongo_uri = mongo_credentials['uri']
 else:
 	mongo_uri = 'mongodb://localhost/db'
+
 
 app.config['MONGODB_SETTINGS'] = [
 	{
@@ -32,6 +34,7 @@ app.config['MONGODB_SETTINGS'] = [
 
 # bootstrap our app
 db = MongoEngine(app)
+
 
 class DataPoint(db.Document):
 	devEUI = db.StringField(required=True)
@@ -77,27 +80,32 @@ def bitshift (payload,lastbyte):
 def hello_world():
 	return "<b>Congratulations! Welcome to Spaghetti v1!</b>"
 
-#output a csv file
-#To do: debug (correct nested list import)
-@app.route('/csv/<track>')
-def print_csv(track):
+#some functions for the freeboard interface
+@app.route('/freeboard/dbmonitor',methods=['GET'])
+def freeboard_total():
+	dbmonitor = {}
+	nb_entries = DataPoint.objects().count()
+	dbmonitor.update({'Total entries':nb_entries,'Last ESP 0B030153':latest_esp})
+	dbmonitor.update({'Last latitude':latest_position[0],'Last longitude':latest_position[1]})
+	dbmonitor.update({'Last seen EUI':latest_deveui,'Time':latest_time})
+	return json.dumps(dbmonitor,indent=4)
 
-	#make flattened list for export
-	response = chain.from_iterable(make_response(DataPoint.objects(track_ID=track)))
+#output JSON
+@app.route('/json', methods=['GET'])
+def print_json():
+	query = request.args
+	if 'track' in query:
+		response = DataPoint.objects(track_ID=int(query['track'])).to_json()
+	else:
+		response = DataPoint.objects().to_json()
 
-	print(response) 
-	cd = 'attachment; filename = export.csv'
-	response.headers['Content-Disposition'] = cd
-	response.mimetype='text/csv'
-	return response
+	return Response(response,mimetype='application/json',
+		headers={'Content-Disposition':'attachment;filename=database.json'})
 
 #querying the database and giving back a JSON file
 @app.route('/query', methods=['GET'])
 def db_query():
 	query = request.args
-	print('args received')
-	print(query)
-
 	track = 0
 	start = dt.datetime.now() - dt.timedelta(days=365)
 	end = dt.datetime.now()
@@ -182,6 +190,8 @@ def sc_lpn():
 		g_rssi.append(item['LrrRSSI'])
 		g_snr.append(item['LrrSNR'])
 		g_esp.append(item['LrrESP'])
+		if item['Lrrid']=='0B030153':
+			latest_esp = item['LrrESP']
 
 	if(r_deveui in tuino_list):
 		r_devtype = "tuino-v3"
@@ -199,6 +209,15 @@ def sc_lpn():
 		r_course = ((payload_int & 0x0000000000000000000000000000000000ff0000) >> bitshift(size_payload,17)) * 2
 		r_trk = ((payload_int & 0x000000000000000000000000000000000000ff00) >> bitshift(size_payload,18))
 		r_txpow= ((payload_int & 0x00000000000000000000000000000000000000ff) >> bitshift(size_payload,19))
+
+		latest_position = (r_lat,r_lon)
+		latest_deveui = r_deveui
+		latest_time = r_time
+
+		#latest weather data
+		if r_trk == 2:
+			latest_hum = r_hum
+			latest_temp = r_temp
 
 		print('TXpow: ' + str(r_txpow))
 		print('SF: '+ str(r_sp_fact))
@@ -314,8 +333,13 @@ def coord_to_m(latlon, meter, deglat):
 		return (meter/360.0)*R
 	else:
 		return 0
+
 # start the app
 if __name__ == '__main__':
-	#print(m_to_coord('lat',10000,46.518718))
-	#print(m_to_coord('lon',10000,46.518718))
+	global latest_esp
+	global latest_position
+	global latest_hum
+	global latest_temp
+	global latest_deveui
+	global latest_time
 	app.run(host='0.0.0.0', port=port)
