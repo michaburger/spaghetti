@@ -11,6 +11,7 @@ from itertools import chain
 app = Flask(__name__)
 TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
 
+dev_euis = ['78AF580300000485','78AF580300000506']
 
 # check if running in the cloud and set MongoDB settings accordingly
 if 'VCAP_SERVICES' in os.environ:
@@ -34,7 +35,6 @@ app.config['MONGODB_SETTINGS'] = [
 
 # bootstrap our app
 db = MongoEngine(app)
-
 
 class DataPoint(db.Document):
 	devEUI = db.StringField(required=True)
@@ -81,14 +81,24 @@ def hello_world():
 	return "<b>Congratulations! Welcome to Spaghetti v1!</b>"
 
 #some functions for the freeboard interface
+@app.route('/freeboard/devices',methods=['GET'])
+def freeboard_devices():
+	query = request.args
+	if 'dev' in query:
+		for i, dev in enumerate(dev_euis):
+			if dev == query['dev']:
+				return json.dumps(latest_values[i],indent=4)
+	return json.dumps({})
+
 @app.route('/freeboard/dbmonitor',methods=['GET'])
-def freeboard_total():
-	dbmonitor = {}
-	nb_entries = DataPoint.objects().count()
-	dbmonitor.update({'Total entries':nb_entries,'Last ESP 0B030153':latest_esp})
-	dbmonitor.update({'Last latitude':latest_position[0],'Last longitude':latest_position[1]})
-	dbmonitor.update({'Last seen EUI':latest_deveui,'Time':latest_time})
-	return json.dumps(dbmonitor,indent=4)
+def freeboard_db():
+	db_state = {}
+	db_state.update({"Total entries":DataPoint.objects().count()})
+	track_array = []
+	for i in range (0,31):
+		track_array.append(DataPoint.objects(track_ID=i).count())
+	db_state.update({"Tracks":track_array})
+	return json.dumps(db_state,indent=4)
 
 #output JSON
 @app.route('/json', methods=['GET'])
@@ -107,8 +117,10 @@ def print_json():
 def db_query():
 	query = request.args
 	track = 0
+	hdop = 500
 	start = dt.datetime.now() - dt.timedelta(days=365)
 	end = dt.datetime.now()
+	device = '78AF580300000485'
 
 	#enable for deleting objects. Attention, deletes parts of the database! Should be left disabled.
 	if 'delete' in query and 'start' in query and 'end' in query:
@@ -117,6 +129,10 @@ def db_query():
 		#DataPoint.objects(track_ID=query['delete'],timestamp__lt=end,timestamp__gt=start).delete()
 		#return 'objects deleted'
 		return 'delete feature disabled for security reasons'
+
+	if 'deltrack' in query:
+		DataPoint.objects(track_ID=int(query['deltrack'])).delete()
+		return 'track deleted'
 
 	if 'delpoint' in query:
 		#to do: debug this
@@ -128,18 +144,23 @@ def db_query():
 
 	if 'start' in query:
 		start = dt.datetime.strptime(query['start'], TIME_FORMAT)
-	
 
 	if 'end' in query:
 		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
 
+	if 'device' in query:
+		device = query['device']
+
+	if 'hdop' in query:
+		hdop = query['hdop']
+
 	if 'sf' in query and 'txpow' in query:
 		sf = int(query['sf'])
 		txpow = int(query['txpow'])
-		datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start,sp_fact=sf,tx_pow=txpow).to_json()
+		datapoints = DataPoint.objects(track_ID=track,devEUI=device,timestamp__lt=end,timestamp__gt=start,sp_fact=sf,tx_pow=txpow,gps_hdop__lt=hdop).to_json()
 		return datapoints
 	else:
-		datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start).to_json()
+		datapoints = DataPoint.objects(track_ID=track,devEUI=device,timestamp__lt=end,timestamp__gt=start,gps_hdop__lt=hdop).to_json()
 		return datapoints
 
 
@@ -150,6 +171,9 @@ def sc_lpn():
 	This methods handle every messages sent by the LORA sensors
 	:return:
 	"""
+
+	latest_esp = esp_buff
+
 	print("Data received from ThingPark...")
 	j = []
 	try:
@@ -185,7 +209,7 @@ def sc_lpn():
 	g_esp = []
 
 	#parse array of multiple gateways
-	for index, item in enumerate(j['DevEUI_uplink']['Lrrs']['Lrr']):
+	for item in j['DevEUI_uplink']['Lrrs']['Lrr']:
 		g_id.append(item['Lrrid'])
 		g_rssi.append(item['LrrRSSI'])
 		g_snr.append(item['LrrSNR'])
@@ -210,14 +234,11 @@ def sc_lpn():
 		r_trk = ((payload_int & 0x000000000000000000000000000000000000ff00) >> bitshift(size_payload,18))
 		r_txpow= ((payload_int & 0x00000000000000000000000000000000000000ff) >> bitshift(size_payload,19))
 
-		latest_position = (r_lat,r_lon)
-		latest_deveui = r_deveui
-		latest_time = r_time
-
-		#latest weather data
-		if r_trk == 2:
-			latest_hum = r_hum
-			latest_temp = r_temp
+		#update latest values
+		for i, dev in enumerate(dev_euis):
+			if r_deveui == dev:
+				latest_values[i].update({"devEUI":r_deveui,"ESP 0B030153":latest_esp,"Position":(r_lat,r_lon),"Humidity":r_hum,"Temperature":r_temp,
+					"Time":r_time,"Track":r_trk,"TXpow":r_txpow,"SF":r_sp_fact,"HDOP":r_hdop})
 
 		print('TXpow: ' + str(r_txpow))
 		print('SF: '+ str(r_sp_fact))
@@ -336,10 +357,8 @@ def coord_to_m(latlon, meter, deglat):
 
 # start the app
 if __name__ == '__main__':
-	global latest_esp
-	global latest_position
-	global latest_hum
-	global latest_temp
-	global latest_deveui
-	global latest_time
+	global latest_values 
+	global esp_buff
+	esp_buff = 0
+	latest_values = [{},{}]
 	app.run(host='0.0.0.0', port=port)
