@@ -10,6 +10,7 @@ from itertools import chain
 
 app = Flask(__name__)
 TIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
+TIME_FORMAT_DEL = "%Y-%m-%dT%H:%M:%S"
 
 dev_euis = ['78AF580300000485','78AF580300000506']
 
@@ -131,13 +132,17 @@ def db_query():
 		return 'delete feature disabled for security reasons'
 
 	if 'deltrack' in query:
-		DataPoint.objects(track_ID=int(query['deltrack'])).delete()
-		return 'track deleted'
+		#DataPoint.objects(track_ID=int(query['deltrack'])).delete()
+		#return 'track deleted'
+		return 'function disabled for security reasons'
 
 	if 'delpoint' in query:
-		#to do: debug this
-		DataPoint.objects(timestamp=query['delpoint']).delete()
-		return "ok"
+		print('query for deleting point received')
+		deltime_start = dt.datetime.strptime(query['delpoint'], TIME_FORMAT_DEL) - dt.timedelta(seconds=2)
+		deltime_end = dt.datetime.strptime(query['delpoint'], TIME_FORMAT_DEL) + dt.timedelta(seconds=2)
+		n_points = DataPoint.objects(timestamp__lt=deltime_end, timestamp__gt=deltime_start).count()
+		DataPoint.objects(timestamp__lt=deltime_end, timestamp__gt=deltime_start).delete()
+		return '{} points deleted'.format(n_points)
 
 	if 'track' in query:
 		track = int(query['track'])
