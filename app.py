@@ -117,11 +117,12 @@ def print_json():
 @app.route('/query', methods=['GET'])
 def db_query():
 	query = request.args
-	track = 0
+	txpow = 0
+	sf = 7
+	track = 20
 	hdop = 500
 	start = dt.datetime.now() - dt.timedelta(days=365)
 	end = dt.datetime.now()
-	device = '78AF580300000485'
 
 	#enable for deleting objects. Attention, deletes parts of the database! Should be left disabled.
 	if 'delete' in query and 'start' in query and 'end' in query:
@@ -153,20 +154,20 @@ def db_query():
 	if 'end' in query:
 		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
 
-	if 'device' in query:
-		device = query['device']
-
 	if 'hdop' in query:
 		hdop = query['hdop']
 
 	if 'sf' in query and 'txpow' in query:
 		sf = int(query['sf'])
 		txpow = int(query['txpow'])
+
+	if 'device' in query:
+		device = query['device']
 		datapoints = DataPoint.objects(track_ID=track,devEUI=device,timestamp__lt=end,timestamp__gt=start,sp_fact=sf,tx_pow=txpow,gps_hdop__lt=hdop).to_json()
-		return datapoints
 	else:
-		datapoints = DataPoint.objects(track_ID=track,devEUI=device,timestamp__lt=end,timestamp__gt=start,gps_hdop__lt=hdop).to_json()
-		return datapoints
+		datapoints = DataPoint.objects(track_ID=track,timestamp__lt=end,timestamp__gt=start,sp_fact=sf,tx_pow=txpow,gps_hdop__lt=hdop).to_json()
+
+	return datapoints
 
 
 # Swisscom LPN listener to POST from actility
@@ -200,6 +201,7 @@ def sc_lpn():
 	payload_int = int(j['DevEUI_uplink']['payload_hex'],16)
 	bytes = bytearray.fromhex(payload)
 	r_deveui = j['DevEUI_uplink']['DevEUI']
+	print("DevEUI: "+str(r_deveui))
 	r_time = j['DevEUI_uplink']['Time']
 	#Directive %z not supported in python 2! 
 	#Todo: Use Python 3 and remove fixed timezone
@@ -286,7 +288,9 @@ def sc_lpn():
 			gps_speed = r_speed, gps_course = r_course, temperature=r_temp, humidity=r_hum, sp_fact=r_sp_fact, 
 			channel=r_channel, sub_band=r_band, gateway_id=g_id, gateway_rssi=g_rssi, gateway_snr=g_snr, 
 			gateway_esp=g_esp, tx_pow = r_txpow)
+		print(datapoint)
 		datapoint.save()
+		print('Datapoint saved to database')
 		return 'Datapoint DevEUI %s saved' %(r_deveui)
 	else:
 		print("no gps coords, point not saved")
@@ -333,12 +337,6 @@ def gateway_data():
 			gateways = Gateways.objects.to_json()
 		
 		return gateways
-
-# endpoint to return all kittens
-@app.route('/db')
-def get_data():
-	datapoints = DataPoint.objects.to_json()
-	return datapoints
 
 
 def m_to_coord(latlon, meter, deglat):
