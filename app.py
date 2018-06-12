@@ -122,7 +122,7 @@ def db_query():
 	track = 20
 	hdop = 500
 	start = dt.datetime.now() - dt.timedelta(days=365)
-	end = dt.datetime.now()
+	end = dt.datetime.now() + dt.timedelta(hours=2)
 
 	#enable for deleting objects. Attention, deletes parts of the database! Should be left disabled.
 	if 'delete' in query and 'start' in query and 'end' in query:
