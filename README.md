@@ -30,6 +30,8 @@ Arguments:
 `lat`: latitude of the gateway  
 `lon`: longitude of the gateway
 
+App route `/import` can import from a backup point-by-point. All the point information has to be given as arguments. The function is not tested yet, for this purpose, a script needs to be written that transforms the .json backup into a series of POST requests.
+
 
 ##Data output
 
