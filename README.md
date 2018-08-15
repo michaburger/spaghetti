@@ -20,8 +20,8 @@ This API is built on [Flask](http://flask.pocoo.org/) and connects to a mongoDB 
 1. Visit the given URL
 
 
-##Description of the API  
-###Data input  
+## Description of the API  
+### Data input  
 The app route `/sc_lpn` handles the data input from Actility Thingpark with HTTP POST in the format given by Actility.
 
 App route `/gateway` can handle the input of new gateways to be stored in the database, when used with HTTP POST.  
@@ -33,7 +33,7 @@ Arguments:
 App route `/import` can import from a backup point-by-point. All the point information has to be given as arguments. The function is not tested yet, for this purpose, a script needs to be written that transforms the .json backup into a series of POST requests.
 
 
-##Data output  
+## Data output  
 
 App route `/gateway` with HTTP GET returns all the gateways within a certain radius around the center point.
 Arguments:  
