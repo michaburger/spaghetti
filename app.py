@@ -101,6 +101,22 @@ def freeboard_db():
 	db_state.update({"Tracks":track_array})
 	return json.dumps(db_state,indent=4)
 
+#made to import data from backup file, point per point
+@app.route('/import', methods=['POST'])
+def import_backup():
+	query = request.args
+	if 'devEUI' in query and 'deviceType' in query and 'track_ID' in query and 'timestamp' in query and 'time' in query and 'gps_lat' in query and 'gps_lon' in query and 'gps_sat' in query and 'gps_hdop' in query and 'gps_speed' in query and 'gps_course' in query and 'temperature' in query and 'humidity' in query and 'sp_fact' in query and 'channel' in query and 'sub_band' in query and 'gateway_id' in query and 'gateway_rssi' in query and 'gateway_snr' in query and 'gateway_esp' in query and 'tx_pow' in query:
+		datapoint = DataPoint(devEUI=query['r_deveui'], time= query['r_time'], timestamp = query['r_timestamp'], deviceType = query['r_devtype'], gps_sat = query['r_sat'], 
+			gps_hdop = query['r_hdop'], track_ID = query['r_trk'], gps_lat=query['r_lat'], gps_lon=query['r_lon'],
+			gps_speed = query['r_speed'], gps_course = query['r_course'], temperature=query['r_temp'], humidity=query['r_hum'], sp_fact=query['r_sp_fact'], 
+			channel=query['r_channel'], sub_band=query['r_band'], gateway_id=query['g_id'], gateway_rssi=query['g_rssi'], gateway_snr=query['g_snr'], 
+			gateway_esp=query['g_esp'], tx_pow = query['r_txpow'])
+		datapoint.save()
+		return 'Point stored'
+
+	else:
+		return 'ERROR: missing inputs'
+
 #output JSON
 @app.route('/json', methods=['GET'])
 def print_json():
@@ -124,7 +140,7 @@ def db_query():
 	start = dt.datetime.now() - dt.timedelta(days=365)
 	end = dt.datetime.now() + dt.timedelta(hours=2)
 
-	#enable for deleting objects. Attention, deletes parts of the database! Should be left disabled.
+	#enable for deleting objects. Attention, deletes parts of the database! 
 	if 'delete' in query and 'start' in query and 'end' in query:
 		end = dt.datetime.strptime(query['end'], TIME_FORMAT)
 		start = dt.datetime.strptime(query['start'], TIME_FORMAT)
@@ -174,7 +190,7 @@ def db_query():
 @app.route('/sc_lpn', methods=['POST'])
 def sc_lpn():
 	"""
-	This methods handle every messages sent by the LORA sensors
+	This method handles every message sent by the LORA sensors
 	:return:
 	"""
 
